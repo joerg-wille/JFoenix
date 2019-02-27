@@ -44,7 +44,6 @@ import javafx.scene.input.KeyEvent;
 import javafx.scene.input.MouseEvent;
 import javafx.scene.layout.StackPane;
 import javafx.scene.paint.Color;
-import javafx.stage.Stage;
 import javafx.stage.StageStyle;
 import javafx.stage.Window;
 
@@ -73,7 +72,7 @@ public class JFXAlert<R> extends Dialog<R> {
         this(null);
     }
 
-    public JFXAlert(Stage stage) {
+    public JFXAlert(Window window) {
         // create content
         contentContainer = new StackPane();
         contentContainer.getStyleClass().add("jfx-alert-content-container");
@@ -98,8 +97,9 @@ public class JFXAlert<R> extends Dialog<R> {
                 Window owner = getOwner();
                 if (owner != null) {
                     return owner.getHeight();
-                }else
+                } else {
                     return super.computePrefHeight(width);
+                }
             }
 
             @Override
@@ -107,8 +107,9 @@ public class JFXAlert<R> extends Dialog<R> {
                 Window owner = getOwner();
                 if (owner != null) {
                     return owner.getWidth();
-                }else
+                } else {
                     return super.computePrefWidth(height);
+                }
             }
 
             @Override
@@ -152,10 +153,10 @@ public class JFXAlert<R> extends Dialog<R> {
         setDialogPane(dialogPane);
         dialogPane.getScene().setFill(Color.TRANSPARENT);
 
-        if (stage != null) {
-            // set the stage to transparent
+        if (window != null) {
+            // set the window to transparent
             initStyle(StageStyle.TRANSPARENT);
-            initOwner(stage);
+            initOwner(window);
 
             // init style for overlay
             dialogPane.addEventHandler(MouseEvent.MOUSE_CLICKED, event -> {
@@ -163,32 +164,31 @@ public class JFXAlert<R> extends Dialog<R> {
                     hide();
                 }
             });
-            // bind dialog position to stage position
+            // bind dialog position to window position
             widthListener = observable -> updateWidth();
             heightListener = observable -> updateHeight();
             xListener = observable -> updateX();
             yListener = observable -> updateY();
         }
 
-        // handle animation / owner stage layout changes
+        // handle animation / owner window layout changes
         eventHandlerManager.addEventHandler(DialogEvent.DIALOG_SHOWING, event -> {
-            if (getAnimation() != null) {
-                addLayoutListeners();
-                getAnimation().initAnimation(contentContainer.getParent(), dialogPane);
-            }
+            addLayoutListeners();
+            JFXAlertAnimation currentAnimation = getCurrentAnimation();
+            currentAnimation.initAnimation(contentContainer.getParent(), dialogPane);
         });
         eventHandlerManager.addEventHandler(DialogEvent.DIALOG_SHOWN, event -> {
             if (getOwner() != null) {
                 updateLayout();
             }
-            if (getAnimation() != null) {
-                animateClosing = true;
-                Animation animation = getAnimation().createShowingAnimation(dialogPane.getContent(), dialogPane);
-                if (animation != null) {
-                    animation.play();
-                }
+            animateClosing = true;
+            JFXAlertAnimation currentAnimation = getCurrentAnimation();
+            Animation animation = currentAnimation.createShowingAnimation(dialogPane.getContent(), dialogPane);
+            if (animation != null) {
+                animation.play();
             }
         });
+
         eventHandlerManager.addEventHandler(DialogEvent.DIALOG_CLOSE_REQUEST, event -> {
             if (animateClosing) {
                 event.consume();
@@ -204,6 +204,13 @@ public class JFXAlert<R> extends Dialog<R> {
                 }
             }
         });
+    }
+
+    // this method ensure not null value for current animation
+    private JFXAlertAnimation getCurrentAnimation() {
+        JFXAlertAnimation usedAnimation = getAnimation();
+        usedAnimation = usedAnimation == null ? JFXAlertAnimation.NO_ANIMATION : usedAnimation;
+        return usedAnimation;
     }
 
     private void removeLayoutListeners() {
@@ -265,19 +272,20 @@ public class JFXAlert<R> extends Dialog<R> {
      */
     public void hideWithAnimation() {
         if (transition == null || transition.getStatus().equals(Animation.Status.STOPPED)) {
-            if (getAnimation() != null) {
-                Animation animation = getAnimation().createHidingAnimation(getDialogPane().getContent(), getDialogPane());
-                if (animation != null) {
-                    transition = animation;
-                    animation.setOnFinished(finish -> {
-                        animateClosing = false;
-                        this.hide();
-                        this.transition = null;
-                    });
-                    animation.play();
-                } else {
-                    Platform.runLater(this::hide);
-                }
+            JFXAlertAnimation currentAnimation = getCurrentAnimation();
+            Animation animation = currentAnimation.createHidingAnimation(getDialogPane().getContent(), getDialogPane());
+            if (animation != null) {
+                transition = animation;
+                animation.setOnFinished(finish -> {
+                    animateClosing = false;
+                    hide();
+                    transition = null;
+                });
+                animation.play();
+            } else {
+                animateClosing = false;
+                transition = null;
+                Platform.runLater(this::hide);
             }
         }
     }

@@ -19,6 +19,7 @@
 
 package com.jfoenix.controls;
 
+import com.jfoenix.cache.CachePolicy;
 import com.jfoenix.controls.events.JFXDrawerEvent;
 import com.jfoenix.transitions.JFXAnimationTimer;
 import com.jfoenix.transitions.JFXDrawerKeyValue;
@@ -26,9 +27,17 @@ import com.jfoenix.transitions.JFXKeyFrame;
 import com.jfoenix.transitions.JFXKeyValue;
 import javafx.animation.Interpolator;
 import javafx.animation.PauseTransition;
+import javafx.application.Platform;
 import javafx.beans.binding.Bindings;
 import javafx.beans.binding.DoubleBinding;
-import javafx.beans.property.*;
+import javafx.beans.property.BooleanProperty;
+import javafx.beans.property.DoubleProperty;
+import javafx.beans.property.ObjectProperty;
+import javafx.beans.property.ObjectPropertyBase;
+import javafx.beans.property.ReadOnlyDoubleProperty;
+import javafx.beans.property.SimpleBooleanProperty;
+import javafx.beans.property.SimpleDoubleProperty;
+import javafx.beans.property.SimpleObjectProperty;
 import javafx.beans.value.WritableValue;
 import javafx.collections.ObservableList;
 import javafx.event.Event;
@@ -38,12 +47,24 @@ import javafx.geometry.Pos;
 import javafx.scene.Cursor;
 import javafx.scene.Node;
 import javafx.scene.input.MouseEvent;
-import javafx.scene.layout.*;
+import javafx.scene.layout.Background;
+import javafx.scene.layout.BackgroundFill;
+import javafx.scene.layout.CornerRadii;
+import javafx.scene.layout.HBox;
+import javafx.scene.layout.Priority;
+import javafx.scene.layout.Region;
+import javafx.scene.layout.StackPane;
+import javafx.scene.layout.VBox;
 import javafx.scene.paint.Color;
 import javafx.util.Callback;
 import javafx.util.Duration;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.function.Supplier;
 
 /**
@@ -132,85 +153,20 @@ public class JFXDrawer extends StackPane {
     // used to cache the drawer size
     private double tempDrawerSize = getDefaultDrawerSize();
 
-    private JFXAnimationTimer translateTimer = new JFXAnimationTimer(
-        new JFXKeyFrame(Duration.millis(420),
-            JFXKeyValue.builder()
-                .setTargetSupplier(() -> overlayPane.opacityProperty())
-                .setEndValueSupplier(() -> !hasMiniSize() ? 1 - translateTo / initTranslate.get() : (resizeTo == getMiniDrawerSize() ? 0 : 1))
-                .setInterpolator(Interpolator.EASE_BOTH).build()),
-        new JFXKeyFrame(Duration.millis(420),
-            JFXKeyValue.builder()
-                .setTargetSupplier(() -> translateProperty)
-                .setEndValueSupplier(() -> !hasMiniSize() ? translateTo : 0)
-                .setInterpolator(Interpolator.EASE_BOTH).build()),
-        new JFXKeyFrame(Duration.millis(420),
-            JFXKeyValue.builder()
-                .setTargetSupplier(() -> prefSizeProperty)
-                .setEndValueSupplier(() -> getDefaultDrawerSize())
-                .setAnimateCondition(() -> !hasMiniSize() && translateTo == initTranslate.get())
-                .setInterpolator(Interpolator.EASE_BOTH).build()),
-        new JFXKeyFrame(Duration.millis(420),
-            JFXKeyValue.builder()
-                .setTargetSupplier(() -> maxSizeProperty)
-                .setEndValueSupplier(() -> getDefaultDrawerSize())
-                .setAnimateCondition(() -> !hasMiniSize() && translateTo == initTranslate.get())
-                .setInterpolator(Interpolator.EASE_BOTH).build()),
-        // open animation
-        new JFXKeyFrame(Duration.millis(420),
-            JFXKeyValue.builder()
-                .setTargetSupplier(() -> prefSizeProperty)
-                .setEndValueSupplier(() -> tempDrawerSize)
-                .setAnimateCondition(() -> translateTo == 0 && tempDrawerSize > getDefaultDrawerSize() && !hasMiniSize())
-                .setInterpolator(Interpolator.EASE_BOTH).build()),
-        new JFXKeyFrame(Duration.millis(420),
-            JFXKeyValue.builder()
-                .setTargetSupplier(() -> maxSizeProperty)
-                .setEndValueSupplier(() -> tempDrawerSize)
-                .setAnimateCondition(() -> translateTo == 0 && tempDrawerSize > getDefaultDrawerSize() && !hasMiniSize())
-                .setInterpolator(Interpolator.EASE_BOTH).build()),
-        new JFXKeyFrame(Duration.millis(420),
-            JFXKeyValue.builder()
-                .setTargetSupplier(() -> prefSizeProperty)
-                .setEndValueSupplier(() -> getMiniDrawerSize())
-                .setAnimateCondition(() -> hasMiniSize() && resizeTo <= getMiniDrawerSize())
-                .setInterpolator(Interpolator.EASE_BOTH).build()),
-        new JFXKeyFrame(Duration.millis(420),
-            JFXKeyValue.builder()
-                .setTargetSupplier(() -> maxSizeProperty)
-                .setEndValueSupplier(() -> getMiniDrawerSize())
-                .setAnimateCondition(() -> hasMiniSize() && resizeTo <= getMiniDrawerSize())
-                .setInterpolator(Interpolator.EASE_BOTH).build()),
-        // open animation
-        new JFXKeyFrame(Duration.millis(420),
-            JFXKeyValue.builder()
-                .setTargetSupplier(() -> prefSizeProperty)
-                .setEndValueSupplier(() -> getDefaultDrawerSize())
-                .setAnimateCondition(() -> hasMiniSize() && resizeTo > getMiniDrawerSize())
-                .setInterpolator(Interpolator.EASE_BOTH).build()),
-        new JFXKeyFrame(Duration.millis(420),
-            JFXKeyValue.builder()
-                .setTargetSupplier(() -> maxSizeProperty)
-                .setEndValueSupplier(() -> getDefaultDrawerSize())
-                .setAnimateCondition(() -> hasMiniSize() && resizeTo > getMiniDrawerSize())
-                .setInterpolator(Interpolator.EASE_BOTH).build()),
-        // padding animation
-        new JFXKeyFrame(Duration.millis(420),
-            JFXKeyValue.builder()
-                .setTargetSupplier(() -> paddingSizeProperty)
-                .setEndValueSupplier(this::computePaddingSize)
-                .setAnimateCondition(() -> isResizeContent())
-                .setInterpolator(Interpolator.EASE_BOTH).build())
+    private JFXAnimationTimer translateTimer;
 
-    );
-
+    public JFXDrawer() {
+        this(Duration.millis(420));
+    }
 
     /**
      * creates empty drawer node
      */
-    public JFXDrawer() {
+    public JFXDrawer(Duration duration) {
         initialize();
-
+        translateTimer = createDrawerAnimation(duration);
         contentHolder.setPickOnBounds(false);
+        addEventHandler(JFXDrawerEvent.CLOSED, handler -> Platform.runLater(() -> getCachePolicy().restore(contentHolder)));
 
         overlayPane.setBackground(new Background(new BackgroundFill(Color.rgb(0, 0, 0, 0.1),
             CornerRadii.EMPTY,
@@ -329,8 +285,82 @@ public class JFXDrawer extends StackPane {
                           + activeOffset * directionProperty.get().doubleValue();
             overlayPane.setMouseTransparent(!isOverLayVisible());
             translateTimer.setOnFinished(null);
+            getCachePolicy().cache(contentHolder);
             translateTimer.start();
         });
+    }
+
+    private JFXAnimationTimer createDrawerAnimation(Duration duration) {
+        return new JFXAnimationTimer(
+            new JFXKeyFrame(duration,
+                JFXKeyValue.builder()
+                    .setTargetSupplier(() -> overlayPane.opacityProperty())
+                    .setEndValueSupplier(() -> !hasMiniSize() ? 1 - translateTo / initTranslate.get() : (resizeTo == getMiniDrawerSize() ? 0 : 1))
+                    .setInterpolator(Interpolator.EASE_BOTH).build()),
+            new JFXKeyFrame(duration,
+                JFXKeyValue.builder()
+                    .setTargetSupplier(() -> translateProperty)
+                    .setEndValueSupplier(() -> !hasMiniSize() ? translateTo : 0)
+                    .setInterpolator(Interpolator.EASE_BOTH).build()),
+            new JFXKeyFrame(duration,
+                JFXKeyValue.builder()
+                    .setTargetSupplier(() -> prefSizeProperty)
+                    .setEndValueSupplier(() -> getDefaultDrawerSize())
+                    .setAnimateCondition(() -> !hasMiniSize() && translateTo == initTranslate.get())
+                    .setInterpolator(Interpolator.EASE_BOTH).build()),
+            new JFXKeyFrame(duration,
+                JFXKeyValue.builder()
+                    .setTargetSupplier(() -> maxSizeProperty)
+                    .setEndValueSupplier(() -> getDefaultDrawerSize())
+                    .setAnimateCondition(() -> !hasMiniSize() && translateTo == initTranslate.get())
+                    .setInterpolator(Interpolator.EASE_BOTH).build()),
+            // open animation
+            new JFXKeyFrame(duration,
+                JFXKeyValue.builder()
+                    .setTargetSupplier(() -> prefSizeProperty)
+                    .setEndValueSupplier(() -> tempDrawerSize)
+                    .setAnimateCondition(() -> translateTo == 0 && tempDrawerSize > getDefaultDrawerSize() && !hasMiniSize())
+                    .setInterpolator(Interpolator.EASE_BOTH).build()),
+            new JFXKeyFrame(duration,
+                JFXKeyValue.builder()
+                    .setTargetSupplier(() -> maxSizeProperty)
+                    .setEndValueSupplier(() -> tempDrawerSize)
+                    .setAnimateCondition(() -> translateTo == 0 && tempDrawerSize > getDefaultDrawerSize() && !hasMiniSize())
+                    .setInterpolator(Interpolator.EASE_BOTH).build()),
+            new JFXKeyFrame(duration,
+                JFXKeyValue.builder()
+                    .setTargetSupplier(() -> prefSizeProperty)
+                    .setEndValueSupplier(() -> getMiniDrawerSize())
+                    .setAnimateCondition(() -> hasMiniSize() && resizeTo <= getMiniDrawerSize())
+                    .setInterpolator(Interpolator.EASE_BOTH).build()),
+            new JFXKeyFrame(duration,
+                JFXKeyValue.builder()
+                    .setTargetSupplier(() -> maxSizeProperty)
+                    .setEndValueSupplier(() -> getMiniDrawerSize())
+                    .setAnimateCondition(() -> hasMiniSize() && resizeTo <= getMiniDrawerSize())
+                    .setInterpolator(Interpolator.EASE_BOTH).build()),
+            // open animation
+            new JFXKeyFrame(duration,
+                JFXKeyValue.builder()
+                    .setTargetSupplier(() -> prefSizeProperty)
+                    .setEndValueSupplier(() -> getDefaultDrawerSize())
+                    .setAnimateCondition(() -> hasMiniSize() && resizeTo > getMiniDrawerSize())
+                    .setInterpolator(Interpolator.EASE_BOTH).build()),
+            new JFXKeyFrame(duration,
+                JFXKeyValue.builder()
+                    .setTargetSupplier(() -> maxSizeProperty)
+                    .setEndValueSupplier(() -> getDefaultDrawerSize())
+                    .setAnimateCondition(() -> hasMiniSize() && resizeTo > getMiniDrawerSize())
+                    .setInterpolator(Interpolator.EASE_BOTH).build()),
+            // padding animation
+            new JFXKeyFrame(duration,
+                JFXKeyValue.builder()
+                    .setTargetSupplier(() -> paddingSizeProperty)
+                    .setEndValueSupplier(this::computePaddingSize)
+                    .setAnimateCondition(() -> isResizeContent())
+                    .setInterpolator(Interpolator.EASE_BOTH).build())
+
+        );
     }
 
     /**
@@ -471,6 +501,7 @@ public class JFXDrawer extends StackPane {
                 // enable mouse events
                 this.removeEventFilter(MouseEvent.ANY, eventFilter);
             });
+            getCachePolicy().cache(contentHolder);
             translateTimer.start();
         };
 
@@ -481,6 +512,7 @@ public class JFXDrawer extends StackPane {
         }
         translateTo = initTranslate.get();
         translateTimer.setOnFinished(onFinished);
+        getCachePolicy().cache(contentHolder);
         translateTimer.start();
     }
 
@@ -551,6 +583,7 @@ public class JFXDrawer extends StackPane {
         resizeTo = getDefaultDrawerSize();
         overlayPane.setMouseTransparent(!isOverLayVisible());
         translateTimer.setOnFinished(() -> fireEvent(new JFXDrawerEvent(JFXDrawerEvent.OPENED)));
+        getCachePolicy().cache(contentHolder);
         translateTimer.reverseAndContinue();
     }
 
@@ -579,6 +612,7 @@ public class JFXDrawer extends StackPane {
                 }
             }
         }
+        getCachePolicy().cache(contentHolder);
         translateTimer.reverseAndContinue();
     }
 
@@ -675,6 +709,21 @@ public class JFXDrawer extends StackPane {
 
     public void setDirection(DrawerDirection direction) {
         this.directionProperty.set(direction);
+    }
+
+
+    private SimpleObjectProperty<CachePolicy> cachePolicy = new SimpleObjectProperty<>(CachePolicy.NONE);
+
+    public CachePolicy getCachePolicy() {
+        return cachePolicy.get() == null ? CachePolicy.NONE : cachePolicy.get();
+    }
+
+    public SimpleObjectProperty<CachePolicy> cachePolicyProperty() {
+        return cachePolicy;
+    }
+
+    public void setCachePolicy(CachePolicy cachePolicy) {
+        this.cachePolicy.set(cachePolicy);
     }
 
 
@@ -1028,6 +1077,7 @@ public class JFXDrawer extends StackPane {
             overlayPane.setMouseTransparent(true);
             fireEvent(new JFXDrawerEvent(JFXDrawerEvent.CLOSED));
         });
+        getCachePolicy().cache(contentHolder);
         translateTimer.start();
     }
 
@@ -1039,11 +1089,12 @@ public class JFXDrawer extends StackPane {
         resizeTo = tempDrawerSize = getDefaultDrawerSize();
         overlayPane.setMouseTransparent(!isOverLayVisible());
         translateTimer.setOnFinished(() -> fireEvent(new JFXDrawerEvent(JFXDrawerEvent.OPENED)));
+        getCachePolicy().cache(contentHolder);
         translateTimer.start();
     }
 
     // TODO:ENHANCE: user should be able to remove values
-    public <T> void addAnimatedKeyValue(Node node, JFXDrawerKeyValue... values){//WritableValue<T> target, Supplier<T> openValue, Supplier<T> closeValue, Supplier<Boolean> validCondition) {
+    public <T> void addAnimatedKeyValue(Node node, JFXDrawerKeyValue... values) {//WritableValue<T> target, Supplier<T> openValue, Supplier<T> closeValue, Supplier<Boolean> validCondition) {
         addAnimatedKeyValue(node, Arrays.asList(values));
     }
 
@@ -1053,14 +1104,14 @@ public class JFXDrawer extends StackPane {
             JFXKeyValue modifiedValue = JFXKeyValue.builder()
                 .setEndValueSupplier(() -> currentValue.get(value.getTarget()).get())
                 .setAnimateCondition(() -> node.getScene() != null && value.isValid())
-                .setTargetSupplier(()-> value.getTarget())
+                .setTargetSupplier(() -> value.getTarget())
                 .setInterpolator(value.getInterpolator()).build();
             modifiedValues.add(modifiedValue);
             currentValue.put(value.getTarget(), isClosed() ? value.getCloseValueSupplier() : value.getOpenValueSupplier());
             initValues.put(value.getTarget(), value);
         }
         animatedValues.addAll(modifiedValues);
-        final JFXKeyFrame keyFrame = new JFXKeyFrame(Duration.millis(450), modifiedValues.toArray(new JFXKeyValue[modifiedValues.size()]));
+        final JFXKeyFrame keyFrame = new JFXKeyFrame(Duration.millis(450), modifiedValues.toArray(new JFXKeyValue[0]));
         try {
             translateTimer.addKeyFrame(keyFrame);
         } catch (Exception e) {
@@ -1083,5 +1134,11 @@ public class JFXDrawer extends StackPane {
      */
     private static final String DEFAULT_STYLE_CLASS = "jfx-drawer";
 
+    private static final String USER_AGENT_STYLESHEET = JFXDrawer.class.getResource("/css/controls/jfx-drawer.css").toExternalForm();
+
+    @Override
+    public String getUserAgentStylesheet() {
+        return USER_AGENT_STYLESHEET;
+    }
 }
 
